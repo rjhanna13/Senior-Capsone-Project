@@ -7,6 +7,7 @@
 // 3 - Beacon found, rotate slight right
 // 4 - Objective reached, stop
 //
+//
 /////////////////////////////////////////////////
 #include <iostream>
 #include <ros/ros.h>
