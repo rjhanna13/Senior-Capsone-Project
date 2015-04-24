@@ -1,63 +1,81 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
-
 #include <iostream>
+#include <stdio.h>
+#include <stdlib.h>
 
 using namespace cv;
 using namespace std;
 
-void help()
+Mat src; Mat src_gray;
+int thresh = 100;
+int max_thresh = 255;
+RNG rng(12345);
+
+/// Function header
+void thresh_callback(int, void* );
+
+/** @function main */
+int main( int argc, char** argv )
 {
- cout << "\nThis program demonstrates line finding with the Hough transform.\n"
-         "Usage:\n"
-         "./houghlines <image_name>, Default is pic1.jpg\n" << endl;
+  /// Load source image and convert it to gray
+  argv[1] = "5ft.jpg";
+  src = imread( argv[1], 1 );
+
+  /// Convert image to gray and blur it
+  cvtColor( src, src_gray, CV_BGR2GRAY );
+  blur( src_gray, src_gray, Size(3,3) );
+
+  /// Create Window
+  char* source_window = "Source";
+  namedWindow( source_window, CV_WINDOW_AUTOSIZE );
+  imshow( source_window, src );
+
+  createTrackbar( " Threshold:", "Source", &thresh, max_thresh, thresh_callback );
+  thresh_callback( 0, 0 );
+
+  waitKey(0);
+  return(0);
 }
 
-int main(int argc, char** argv)
+/** @function thresh_callback */
+void thresh_callback(int, void* )
 {
- const char* filename = argc >= 2 ? argv[1] : "5ft.jpg";
+  Mat threshold_output;
+  vector<vector<Point> > contours;
+  vector<Vec4i> hierarchy;
 
- Mat src = imread(filename, 0);
- if(src.empty())
- {
-     help();
-     cout << "can not open " << filename << endl;
-     return -1;
- }
+  /// Detect edges using Threshold
+  threshold( src_gray, threshold_output, thresh, 255, THRESH_BINARY );
+  /// Find contours
+  findContours( threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
 
- Mat dst, cdst;
- Canny(src, dst, 50, 200, 3);
- cvtColor(dst, cdst, CV_GRAY2BGR);
+  /// Find the rotated rectangles and ellipses for each contour
+  vector<RotatedRect> minRect( contours.size() );
+  vector<RotatedRect> minEllipse( contours.size() );
 
- #if 0
-  vector<Vec2f> lines;
-  HoughLines(dst, lines, 1, CV_PI/180, 100, 0, 0 );
+  for( int i = 0; i < contours.size(); i++ )
+     { minRect[i] = minAreaRect( Mat(contours[i]) );
+       if( contours[i].size() > 5 )
+         { minEllipse[i] = fitEllipse( Mat(contours[i]) ); }
+     }
 
-  for( size_t i = 0; i < lines.size(); i++ )
-  {
-     float rho = lines[i][0], theta = lines[i][1];
-     Point pt1, pt2;
-     double a = cos(theta), b = sin(theta);
-     double x0 = a*rho, y0 = b*rho;
-     pt1.x = cvRound(x0 + 1000*(-b));
-     pt1.y = cvRound(y0 + 1000*(a));
-     pt2.x = cvRound(x0 - 1000*(-b));
-     pt2.y = cvRound(y0 - 1000*(a));
-     line( cdst, pt1, pt2, Scalar(0,0,255), 3, CV_AA);
-  }
- #else
-  vector<Vec4i> lines;
-  HoughLinesP(dst, lines, 1, CV_PI/180, 50, 50, 10 );
-  for( size_t i = 0; i < lines.size(); i++ )
-  {
-    Vec4i l = lines[i];
-    line( cdst, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,0,255), 3, CV_AA);
-  }
- #endif
- imshow("source", src);
- imshow("detected lines", cdst);
+  /// Draw contours + rotated rects + ellipses
+  Mat drawing = Mat::zeros( threshold_output.size(), CV_8UC3 );
+  for( int i = 0; i< contours.size(); i++ )
+     {
+       Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
+       // contour
+       drawContours( drawing, contours, i, color, 1, 8, vector<Vec4i>(), 0, Point() );
+       // ellipse
+       ellipse( drawing, minEllipse[i], color, 2, 8 );
+       // rotated rectangle
+       Point2f rect_points[4]; minRect[i].points( rect_points );
+       for( int j = 0; j < 4; j++ )
+          line( drawing, rect_points[j], rect_points[(j+1)%4], color, 1, 8 );
+     }
 
- waitKey();
-
- return 0;
+  /// Show in a window
+  namedWindow( "Contours", CV_WINDOW_AUTOSIZE );
+  imshow( "Contours", drawing );
 }
